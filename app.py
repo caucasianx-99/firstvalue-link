@@ -8,7 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import (
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -18,16 +24,11 @@ from slowapi.util import get_remote_address
 
 
 # ==========================================
-# DATABASE CONFIGURATION
+# CONFIGURATION
 # ==========================================
 
 BASE_DIR = Path(__file__).parent
 DATABASE = BASE_DIR / "firstvalue.db"
-
-
-# ==========================================
-# RATE LIMITING CONFIGURATION
-# ==========================================
 
 limiter = Limiter(
     key_func=get_remote_address
@@ -77,14 +78,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="FirstValue Link",
     description="Simple beta testing and feedback platform",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan
 )
-
-
-# ==========================================
-# RATE LIMITING REGISTRATION
-# ==========================================
 
 app.state.limiter = limiter
 
@@ -95,7 +91,7 @@ app.add_exception_handler(
 
 
 # ==========================================
-# PYDANTIC MODELS
+# REQUEST MODELS
 # ==========================================
 
 class TestCreate(BaseModel):
@@ -148,11 +144,11 @@ def health_check():
 @limiter.limit("5/minute")
 def create_test(
     request: Request,
+    response: Response,
     data: TestCreate
 ):
 
     test_id = secrets.token_urlsafe(12)
-
     owner_token = secrets.token_urlsafe(32)
 
     token_hash = hashlib.sha256(
@@ -186,6 +182,9 @@ def create_test(
                 created_at
             )
         )
+
+    # Prevent caching of the returned owner token.
+    response.headers["Cache-Control"] = "no-store"
 
     return {
         "test_id": test_id,
@@ -255,16 +254,10 @@ def create_participant_response(
 
     with sqlite3.connect(DATABASE) as connection:
 
-        connection.execute(
-            "PRAGMA foreign_keys = ON"
-        )
+        connection.execute("PRAGMA foreign_keys = ON")
 
         test = connection.execute(
-            """
-            SELECT id
-            FROM tests
-            WHERE id = ?
-            """,
+            "SELECT id FROM tests WHERE id = ?",
             (test_id,)
         ).fetchone()
 
@@ -303,19 +296,22 @@ def create_participant_response(
 
 
 # ==========================================
-# GET PARTICIPANT RESPONSES
-# OWNER AUTHENTICATION REQUIRED
+# GET PRIVATE PARTICIPANT RESPONSES
 # ==========================================
 
 @app.get("/api/tests/{test_id}/responses")
+@limiter.limit("10/minute")
 def get_participant_responses(
     test_id: str,
+    request: Request,
+    response: Response,
     x_owner_token: str | None = Header(
         default=None,
         alias="X-Owner-Token"
     )
 ):
 
+    # Owner token must be provided.
     if not x_owner_token:
 
         raise HTTPException(
@@ -323,6 +319,7 @@ def get_participant_responses(
             detail="Owner token required"
         )
 
+    # Convert the submitted token to its SHA-256 hash.
     token_hash = hashlib.sha256(
         x_owner_token.encode("utf-8")
     ).hexdigest()
@@ -345,6 +342,7 @@ def get_participant_responses(
                 detail="Test not found"
             )
 
+        # Constant-time comparison of token hashes.
         if not secrets.compare_digest(
             owner[0],
             token_hash
@@ -379,6 +377,9 @@ def get_participant_responses(
         }
         for row in rows
     ]
+
+    # Private feedback must not be cached.
+    response.headers["Cache-Control"] = "no-store"
 
     return {
         "test_id": test_id,
