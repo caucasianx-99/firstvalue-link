@@ -242,6 +242,11 @@ button:disabled {
             It cannot be recovered later.
             Never share it publicly.
         </p>
+
+        <button type="button" id="download-access-details" disabled>
+            Download Access Details
+        </button>
+
     </div>
 </section>
 
@@ -252,6 +257,38 @@ button:disabled {
     const message = document.getElementById("form-message");
     const button = document.getElementById("create-button");
     const createdTest = document.getElementById("created-test");
+
+    const downloadButton = document.getElementById("download-access-details");
+
+downloadButton.addEventListener("click", () => {
+    const testId = document.getElementById("created-test-id").textContent;
+    const ownerToken = document.getElementById("created-owner-token").textContent;
+
+    if (!testId || !ownerToken) return;
+
+    const content = [
+        "FirstValue Link - Private Access Details",
+        "KEEP THIS FILE PRIVATE. Do not share your Owner Token.",
+        "",
+        `Test ID: ${testId}`,
+        `Owner Token: ${ownerToken}`,
+        `Tester Link: ${document.getElementById("tester-link").href}`,
+        `Dashboard Link: ${document.getElementById("dashboard-link").href}`
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `firstvalue-access-${testId}.txt`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -303,6 +340,7 @@ dashboardLink.textContent = dashboardUrl;
 
 
             createdTest.hidden = false;
+            downloadButton.disabled = false;
             message.textContent = "Your test was created.";
 
         } catch (error) {
