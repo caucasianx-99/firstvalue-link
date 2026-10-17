@@ -2,6 +2,7 @@
 import hashlib
 import secrets
 import sqlite3
+import os
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -27,8 +28,16 @@ from slowapi.util import get_remote_address
 # CONFIGURATION
 # ==========================================
 
+
 BASE_DIR = Path(__file__).parent
-DATABASE = BASE_DIR / "firstvalue.db"
+
+DATABASE = Path(
+    os.environ.get(
+        "DATABASE_PATH",
+        str(BASE_DIR / "firstvalue.db")
+    )
+)
+
 
 limiter = Limiter(
     key_func=get_remote_address
