@@ -1,0 +1,317 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FirstValue Link</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background: #0b1120;
+            color: #f8fafc;
+        }
+
+        header {
+            padding: 24px 8%;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        main {
+            max-width: 760px;
+            margin: 110px auto;
+            padding: 0 24px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: clamp(36px, 6vw, 56px);
+            margin-bottom: 20px;
+        }
+
+        p {
+            color: #94a3b8;
+            font-size: 18px;
+            line-height: 1.7;
+        }
+
+        .highlight {
+            color: #38bdf8;
+        }
+
+        .card {
+            margin-top: 40px;
+            padding: 32px;
+            background: #111c30;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            text-align: left;
+        }
+
+        .card h2 {
+            margin-top: 0;
+        }
+        
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #cbd5e1;
+}
+
+input,
+textarea {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #0b1120;
+    color: white;
+    font-size: 15px;
+}
+
+textarea {
+    min-height: 110px;
+    resize: vertical;
+}
+
+input:focus,
+textarea:focus {
+    outline: 2px solid #38bdf8;
+}
+
+button {
+    margin-top: 12px;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    background: #0284c7;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0369a1;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+#created-test {
+    margin-top: 24px;
+    padding: 20px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+}
+
+#created-test code {
+    display: block;
+    padding: 10px;
+    overflow-wrap: anywhere;
+    background: #0b1120;
+}
+
+.warning {
+    color: #fbbf24;
+    font-size: 14px;
+}
+
+#created-test a {
+    display: block;
+    color: #38bdf8;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="logo">FirstValue Link</div>
+    </header>
+
+    <main>
+        <h1>
+            Discover where your
+            <span class="highlight">first users get stuck.</span>
+        </h1>
+
+        <p>
+            Create a simple task for your beta testers.
+            Share one link and collect feedback
+            about their first experience.
+        </p>
+
+<section class="card">
+    <h2>Create your first test</h2>
+
+    <p>
+        Set a task for your beta testers
+        and discover where they get stuck.
+    </p>
+
+    <form id="create-test-form">
+
+        <label for="product-name">Product Name</label>
+        <input
+            type="text"
+            id="product-name"
+            placeholder="My SaaS"
+            minlength="2"
+            maxlength="100"
+            required
+        >
+
+        <label for="task">Task for testers</label>
+        <textarea
+            id="task"
+            placeholder="Create your first project and save it"
+            minlength="10"
+            maxlength="300"
+            required
+        ></textarea>
+
+        <label for="product-url">Product URL</label>
+        <input
+            type="url"
+            id="product-url"
+            placeholder="https://example.com"
+            required
+        >
+
+        <button type="submit" id="create-button">
+            Create Test
+        </button>
+    </form>
+
+    <p id="form-message" role="status"></p>
+
+    <div id="created-test" hidden>
+        <h3>Test created successfully!</h3>
+
+        <p>Test ID:</p>
+        <code id="created-test-id"></code>
+        
+
+        <p>Tester Link:</p>
+        <a
+            id="tester-link"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+        ></a>
+
+        <p>Dashboard Link:</p>
+        <a
+            id="dashboard-link"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+        ></a>
+
+
+        <p>Owner Token:</p>
+        <code id="created-owner-token"></code>
+
+        <p class="warning">
+            Save your owner token securely.
+            It cannot be recovered later.
+            Never share it publicly.
+        </p>
+    </div>
+</section>
+
+    </main>
+
+<script>
+    const form = document.getElementById("create-test-form");
+    const message = document.getElementById("form-message");
+    const button = document.getElementById("create-button");
+    const createdTest = document.getElementById("created-test");
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        button.disabled = true;
+        message.textContent = "Creating your test...";
+        createdTest.hidden = true;
+
+        const data = {
+            product_name: document.getElementById("product-name").value.trim(),
+            task: document.getElementById("task").value.trim(),
+            product_url: document.getElementById("product-url").value.trim()
+        };
+
+        try {
+            const response = await fetch("/api/tests", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error("Could not create the test. Check your inputs.");
+            }
+
+            document.getElementById("created-test-id").textContent =
+                result.test_id;
+
+            document.getElementById("created-owner-token").textContent =
+                result.owner_token;
+                
+const testerUrl =
+    `${window.location.origin}/test/${encodeURIComponent(result.test_id)}`;
+
+const dashboardUrl =
+    `${window.location.origin}/dashboard/${encodeURIComponent(result.test_id)}`;
+
+const testerLink = document.getElementById("tester-link");
+testerLink.href = testerUrl;
+testerLink.textContent = testerUrl;
+
+const dashboardLink = document.getElementById("dashboard-link");
+dashboardLink.href = dashboardUrl;
+dashboardLink.textContent = dashboardUrl;
+
+
+            createdTest.hidden = false;
+            message.textContent = "Your test was created.";
+
+        } catch (error) {
+            message.textContent = error.message;
+        } finally {
+            button.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,23 @@
+
+# Python virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local database and SQLite temporary files
+firstvalue.db
+firstvalue.db-*
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Editor settings
+.vscode/
+
+# Test and tool caches
+.pytest_cache/
+.ruff_cache/

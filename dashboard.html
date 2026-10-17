@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | FirstValue Link</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px 20px;
+            background: #0b1120;
+            color: #f8fafc;
+            font-family: Arial, sans-serif;
+        }
+
+        main {
+            max-width: 750px;
+            margin: 40px auto;
+        }
+
+        .card {
+            padding: 28px;
+            margin-top: 22px;
+            background: #111c30;
+            border: 1px solid #334155;
+            border-radius: 14px;
+        }
+
+        h1 {
+            font-size: 36px;
+        }
+
+        p {
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        input {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            margin: 14px 0;
+            background: #0b1120;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: white;
+        }
+
+        button {
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            background: #0284c7;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+        }
+
+        .response {
+            padding: 18px;
+            margin-top: 14px;
+            background: #0b1120;
+            border: 1px solid #334155;
+            border-radius: 10px;
+        }
+
+        .response strong {
+            color: #38bdf8;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Founder Dashboard</h1>
+
+        <p>
+            Review feedback from your beta testers.
+        </p>
+
+        <section class="card">
+            <h2>Access your results</h2>
+
+            <form id="access-form">
+                <label for="owner-token">Owner Token</label>
+
+                <input
+                    type="password"
+                    id="owner-token"
+                    placeholder="Enter your private owner token"
+                    autocomplete="off"
+                    required
+                >
+
+                <button type="submit" id="load-button">
+                    Load Feedback
+                </button>
+            </form>
+
+            <p id="status" role="status"></p>
+        </section>
+
+        <section class="card" id="feedback-section" hidden>
+            <h2>Participant Responses</h2>
+
+            <p id="response-count"></p>
+
+            <div id="responses-list"></div>
+        </section>
+    </main>
+
+    <script>
+        const testId = window.location.pathname
+            .split("/")
+            .pop();
+
+        const form = document.getElementById("access-form");
+        const status = document.getElementById("status");
+        const section = document.getElementById("feedback-section");
+        const list = document.getElementById("responses-list");
+        const button = document.getElementById("load-button");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const token = document
+                .getElementById("owner-token").value.trim();
+
+            button.disabled = true;
+            status.textContent = "Loading feedback...";
+            section.hidden = true;
+            list.replaceChildren();
+
+            try {
+                const response = await fetch(
+                    `/api/tests/${encodeURIComponent(testId)}/responses`,
+                    {
+                        headers: {
+                            "X-Owner-Token": token
+                        },
+                        cache: "no-store"
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        response.status === 403
+                            ? "Invalid owner token."
+                            : "Could not load feedback."
+                    );
+                }
+
+                const data = await response.json();
+
+                document.getElementById("response-count")
+                    .textContent =
+                    `${data.responses.length} responses received`;
+
+                for (const item of data.responses) {
+                    const card = document.createElement("div");
+                    card.className = "response";
+
+                    const outcome = document.createElement("strong");
+                    outcome.textContent = item.outcome;
+
+                    const comment = document.createElement("p");
+                    comment.textContent =
+                        item.comment || "No comment provided.";
+
+                    const date = document.createElement("p");
+                    date.textContent =
+                        new Date(item.created_at).toLocaleString();
+
+                    card.append(outcome, comment, date);
+                    list.appendChild(card);
+                }
+
+                if (data.responses.length === 0) {
+                    list.textContent = "No feedback yet.";
+                }
+
+                section.hidden = false;
+                status.textContent = "Feedback loaded.";
+
+                document.getElementById("owner-token").value = "";
+
+            } catch (error) {
+                status.textContent = error.message;
+            } finally {
+                button.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

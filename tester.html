@@ -1,0 +1,335 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beta Test | FirstValue Link</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #0b1120;
+            color: #f8fafc;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 600px;
+            padding: 36px;
+            background: #111c30;
+            border: 1px solid #334155;
+            border-radius: 16px;
+        }
+
+        .eyebrow {
+            color: #38bdf8;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        h1 {
+            margin: 18px 0;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-top: 30px;
+        }
+
+        p {
+            color: #94a3b8;
+            line-height: 1.7;
+        }
+
+        .task {
+            padding: 18px;
+            background: #0b1120;
+            border-radius: 10px;
+            color: white;
+        }
+
+        .button {
+            display: block;
+            margin-top: 24px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #0284c7;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .button:hover {
+            background: #0369a1;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+        
+#feedback-form {
+    margin-top: 28px;
+    border-top: 1px solid #334155;
+    padding-top: 12px;
+}
+
+.choices {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: none;
+    padding: 16px 0;
+    margin: 0;
+}
+
+.choices legend {
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+.choices label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+input[type="radio"] {
+    accent-color: #38bdf8;
+}
+
+textarea {
+    width: 100%;
+    min-height: 100px;
+    margin-top: 12px;
+    padding: 14px;
+    background: #0b1120;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: white;
+    font-family: inherit;
+    resize: vertical;
+}
+
+button {
+    width: 100%;
+    margin-top: 18px;
+    padding: 15px;
+    background: #0284c7;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0369a1;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+    </style>
+</head>
+
+<body>
+    <main class="card">
+        <div class="eyebrow">
+            FirstValue Link · Beta Test
+        </div>
+
+        <h1 id="product-name">Loading test...</h1>
+
+        <h2>Your task</h2>
+
+        <p id="task" class="task">
+            Loading task information...
+        </p>
+
+        <a
+            id="product-link"
+            class="button"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            hidden
+        >
+            Open Product
+        </a>
+
+        <p id="status" role="status"></p>
+        
+<form id="feedback-form" hidden>
+    <h2>How did it go?</h2>
+
+    <fieldset class="choices">
+        <legend>Select your result</legend>
+
+        <label>
+            <input type="radio"
+                   name="outcome"
+                   value="completed"
+                   required>
+            Completed the task
+        </label>
+
+        <label>
+            <input type="radio"
+                   name="outcome"
+                   value="stuck">
+            Got stuck
+        </label>
+
+        <label>
+            <input type="radio"
+                   name="outcome"
+                   value="gave_up">
+            Gave up
+        </label>
+    </fieldset>
+
+    <label for="feedback-comment">
+        Additional feedback (optional)
+    </label>
+
+    <textarea
+        id="feedback-comment"
+        maxlength="500"
+        placeholder="Tell us what happened..."
+    ></textarea>
+
+    <button type="submit" id="send-feedback">
+        Submit Feedback
+    </button>
+</form>
+
+<p id="feedback-message" role="status"></p>
+
+    </main>
+
+    <script>
+        const testId = window.location.pathname
+            .split("/")
+            .pop();
+
+        async function loadTest() {
+            const status = document.getElementById("status");
+
+            try {
+                const response = await fetch(
+                    `/api/tests/${encodeURIComponent(testId)}`
+                );
+
+                if (!response.ok) {
+                    throw new Error("Test not found.");
+                }
+
+                const data = await response.json();
+
+                document.getElementById("product-name")
+                    .textContent = data.product_name;
+
+                document.getElementById("task")
+                    .textContent = data.task;
+
+                const productLink =
+                    document.getElementById("product-link");
+
+                productLink.href = data.product_url;
+                productLink.hidden = false;
+
+                status.textContent =
+                    "Open the product and try the task.";
+                document.getElementById("feedback-form").hidden = false;
+
+            } catch (error) {
+                document.getElementById("product-name")
+                    .textContent = "Unable to load test";
+
+                document.getElementById("task")
+                    .textContent = "";
+
+                status.textContent = error.message;
+            }
+        }
+
+
+const feedbackForm =
+    document.getElementById("feedback-form");
+
+feedbackForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const selected = feedbackForm.querySelector(
+        'input[name="outcome"]:checked'
+    );
+
+    if (!selected) {
+        return;
+    }
+
+    const message =
+        document.getElementById("feedback-message");
+
+    const button =
+        document.getElementById("send-feedback");
+
+    const data = {
+        outcome: selected.value,
+        comment: document.getElementById(
+            "feedback-comment"
+        ).value.trim() || null
+    };
+
+    button.disabled = true;
+    message.textContent = "Submitting feedback...";
+
+    try {
+        const response = await fetch(
+            `/api/tests/${encodeURIComponent(testId)}/responses`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(data)
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "Could not submit feedback. Please try again."
+            );
+        }
+
+        feedbackForm.hidden = true;
+
+        message.textContent =
+            "Thank you! Your feedback has been submitted.";
+
+    } catch (error) {
+        message.textContent = error.message;
+        button.disabled = false;
+    }
+});
+
+
+        loadTest();
+    </script>
+</body>
+</html>
