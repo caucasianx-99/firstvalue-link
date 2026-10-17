@@ -427,3 +427,69 @@ def owner_dashboard(test_id: str):
     return FileResponse(
         BASE_DIR / "dashboard.html"
     )
+
+# ==========================================
+# DELETE TEST AND ITS RESPONSES
+# ==========================================
+
+@app.delete("/api/tests/{test_id}")
+@limiter.limit("5/minute")
+def delete_test(
+    test_id: str,
+    request: Request,
+    x_owner_token: str | None = Header(
+        default=None,
+        alias="X-Owner-Token"
+    )
+):
+    if not x_owner_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Owner token required"
+        )
+
+    token_hash = hashlib.sha256(
+        x_owner_token.encode("utf-8")
+    ).hexdigest()
+
+    with sqlite3.connect(DATABASE) as connection:
+
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        owner = connection.execute(
+            """
+            SELECT owner_token_hash
+            FROM tests
+            WHERE id = ?
+            """,
+            (test_id,)
+        ).fetchone()
+
+        if owner is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Test not found"
+            )
+
+        if not secrets.compare_digest(
+            owner[0],
+            token_hash
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid owner token"
+            )
+
+        connection.execute(
+            "DELETE FROM responses WHERE test_id = ?",
+            (test_id,)
+        )
+
+        connection.execute(
+            "DELETE FROM tests WHERE id = ?",
+            (test_id,)
+        )
+
+    return {
+        "message": "Test and responses deleted successfully"
+    }
