@@ -2,23 +2,49 @@
 import hashlib
 import secrets
 import sqlite3
-from typing import Literal
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel, Field, HttpUrl
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field, HttpUrl
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 
-DATABASE = Path(__file__).parent / "firstvalue.db"
+# ==========================================
+# DATABASE CONFIGURATION
+# ==========================================
 
+BASE_DIR = Path(__file__).parent
+DATABASE = BASE_DIR / "firstvalue.db"
+
+
+# ==========================================
+# RATE LIMITING CONFIGURATION
+# ==========================================
+
+limiter = Limiter(
+    key_func=get_remote_address
+)
+
+
+# ==========================================
+# DATABASE INITIALIZATION
+# ==========================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     with sqlite3.connect(DATABASE) as connection:
+
+        connection.execute("PRAGMA foreign_keys = ON")
+
         connection.execute("""
             CREATE TABLE IF NOT EXISTS tests (
                 id TEXT PRIMARY KEY,
@@ -29,7 +55,7 @@ async def lifespan(app: FastAPI):
                 created_at TEXT NOT NULL
             )
         """)
-        
+
         connection.execute("""
             CREATE TABLE IF NOT EXISTS responses (
                 id TEXT PRIMARY KEY,
@@ -44,39 +70,101 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# ==========================================
+# FASTAPI APPLICATION
+# ==========================================
+
 app = FastAPI(
     title="FirstValue Link",
-    version="0.2.0",
+    description="Simple beta testing and feedback platform",
+    version="0.3.0",
     lifespan=lifespan
 )
 
 
+# ==========================================
+# RATE LIMITING REGISTRATION
+# ==========================================
+
+app.state.limiter = limiter
+
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler
+)
+
+
+# ==========================================
+# PYDANTIC MODELS
+# ==========================================
+
 class TestCreate(BaseModel):
-    product_name: str = Field(min_length=2, max_length=100)
-    task: str = Field(min_length=10, max_length=300)
+
+    product_name: str = Field(
+        min_length=2,
+        max_length=100
+    )
+
+    task: str = Field(
+        min_length=10,
+        max_length=300
+    )
+
     product_url: HttpUrl
 
 
+class ParticipantResponseCreate(BaseModel):
+
+    outcome: Literal[
+        "completed",
+        "stuck",
+        "gave_up"
+    ]
+
+    comment: str | None = Field(
+        default=None,
+        max_length=500
+    )
+
+
+# ==========================================
+# HEALTH CHECK
+# ==========================================
+
 @app.get("/health")
 def health_check():
+
     return {
         "status": "ok",
         "app": "FirstValue Link"
     }
 
 
+# ==========================================
+# CREATE TEST
+# ==========================================
+
 @app.post("/api/tests", status_code=201)
-def create_test(data: TestCreate):
+@limiter.limit("5/minute")
+def create_test(
+    request: Request,
+    data: TestCreate
+):
+
     test_id = secrets.token_urlsafe(12)
+
     owner_token = secrets.token_urlsafe(32)
 
     token_hash = hashlib.sha256(
         owner_token.encode("utf-8")
     ).hexdigest()
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     with sqlite3.connect(DATABASE) as connection:
+
         connection.execute(
             """
             INSERT INTO tests (
@@ -105,13 +193,23 @@ def create_test(data: TestCreate):
         "message": "Test created successfully"
     }
 
+
+# ==========================================
+# GET TEST INFORMATION
+# ==========================================
+
 @app.get("/api/tests/{test_id}")
 def get_test(test_id: str):
 
     with sqlite3.connect(DATABASE) as connection:
+
         test = connection.execute(
             """
-            SELECT product_name, task, product_url, created_at
+            SELECT
+                product_name,
+                task,
+                product_url,
+                created_at
             FROM tests
             WHERE id = ?
             """,
@@ -119,6 +217,7 @@ def get_test(test_id: str):
         ).fetchone()
 
     if test is None:
+
         raise HTTPException(
             status_code=404,
             detail="Test not found"
@@ -132,28 +231,45 @@ def get_test(test_id: str):
         "created_at": test[3]
     }
 
-class ParticipantResponseCreate(BaseModel):
-    outcome: Literal["completed", "stuck", "gave_up"]
-    comment: str | None = Field(default=None, max_length=500)
 
+# ==========================================
+# SUBMIT PARTICIPANT FEEDBACK
+# ==========================================
 
-@app.post("/api/tests/{test_id}/responses", status_code=201)
+@app.post(
+    "/api/tests/{test_id}/responses",
+    status_code=201
+)
+@limiter.limit("15/minute")
 def create_participant_response(
     test_id: str,
+    request: Request,
     data: ParticipantResponseCreate
 ):
+
     response_id = secrets.token_urlsafe(12)
-    created_at = datetime.now(timezone.utc).isoformat()
+
+    created_at = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     with sqlite3.connect(DATABASE) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
+
+        connection.execute(
+            "PRAGMA foreign_keys = ON"
+        )
 
         test = connection.execute(
-            "SELECT id FROM tests WHERE id = ?",
+            """
+            SELECT id
+            FROM tests
+            WHERE id = ?
+            """,
             (test_id,)
         ).fetchone()
 
         if test is None:
+
             raise HTTPException(
                 status_code=404,
                 detail="Test not found"
@@ -185,6 +301,12 @@ def create_participant_response(
         "message": "Feedback submitted successfully"
     }
 
+
+# ==========================================
+# GET PARTICIPANT RESPONSES
+# OWNER AUTHENTICATION REQUIRED
+# ==========================================
+
 @app.get("/api/tests/{test_id}/responses")
 def get_participant_responses(
     test_id: str,
@@ -193,7 +315,9 @@ def get_participant_responses(
         alias="X-Owner-Token"
     )
 ):
+
     if not x_owner_token:
+
         raise HTTPException(
             status_code=401,
             detail="Owner token required"
@@ -204,6 +328,7 @@ def get_participant_responses(
     ).hexdigest()
 
     with sqlite3.connect(DATABASE) as connection:
+
         owner = connection.execute(
             """
             SELECT owner_token_hash
@@ -214,6 +339,7 @@ def get_participant_responses(
         ).fetchone()
 
         if owner is None:
+
             raise HTTPException(
                 status_code=404,
                 detail="Test not found"
@@ -223,6 +349,7 @@ def get_participant_responses(
             owner[0],
             token_hash
         ):
+
             raise HTTPException(
                 status_code=403,
                 detail="Invalid owner token"
@@ -230,7 +357,11 @@ def get_participant_responses(
 
         rows = connection.execute(
             """
-            SELECT id, outcome, comment, created_at
+            SELECT
+                id,
+                outcome,
+                comment,
+                created_at
             FROM responses
             WHERE test_id = ?
             ORDER BY created_at DESC
@@ -254,21 +385,44 @@ def get_participant_responses(
         "responses": responses
     }
 
+
+# ==========================================
+# HOME PAGE
+# ==========================================
+
 @app.get("/", include_in_schema=False)
 def home():
+
     return FileResponse(
-        Path(__file__).parent / "index.html"
+        BASE_DIR / "index.html"
     )
 
-@app.get("/test/{test_id}", include_in_schema=False)
+
+# ==========================================
+# PARTICIPANT PAGE
+# ==========================================
+
+@app.get(
+    "/test/{test_id}",
+    include_in_schema=False
+)
 def participant_page(test_id: str):
+
     return FileResponse(
-        Path(__file__).parent / "tester.html"
+        BASE_DIR / "tester.html"
     )
 
 
-@app.get("/dashboard/{test_id}", include_in_schema=False)
+# ==========================================
+# FOUNDER DASHBOARD
+# ==========================================
+
+@app.get(
+    "/dashboard/{test_id}",
+    include_in_schema=False
+)
 def owner_dashboard(test_id: str):
+
     return FileResponse(
-        Path(__file__).parent / "dashboard.html"
+        BASE_DIR / "dashboard.html"
     )
